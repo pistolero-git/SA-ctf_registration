@@ -42,8 +42,30 @@
                 <label for="ctfr-description">Full description</label>
                 <textarea id="ctfr-description" maxlength="6000" required="required"></textarea>
 
-                <label for="ctfr-image-url">Image URL/path</label>
-                <input id="ctfr-image-url" type="text" maxlength="1000" placeholder="/static/app/SA-ctf_registration/images/asteron-easy.png" />
+                <div class="ctfr-image-admin">
+                  <label for="ctfr-image-file">Event image</label>
+                  <div class="ctfr-image-admin-grid">
+                    <div class="ctfr-image-preview-wrap">
+                      <img id="ctfr-image-preview" class="ctfr-image-preview"
+                           src="/static/app/SA-ctf_registration/images/default-ctf.svg"
+                           alt="CTF image preview"/>
+                    </div>
+                    <div class="ctfr-image-controls">
+                      <input id="ctfr-image-file" type="file"
+                             accept="image/png,image/jpeg,image/webp"/>
+                      <p class="ctfr-help">PNG, JPEG, or WebP. Maximum 5 MB.</p>
+                      <button id="ctfr-use-default-image" type="button" class="btn">Use Default Image</button>
+                      <div id="ctfr-upload-status" class="ctfr-upload-status"></div>
+                    </div>
+                  </div>
+                  <details class="ctfr-image-advanced">
+                    <summary>Advanced: image URL/path</summary>
+                    <label for="ctfr-image-url">Image URL/path</label>
+                    <input id="ctfr-image-url" type="text" maxlength="1000"
+                           value="/static/app/SA-ctf_registration/images/default-ctf.svg"
+                           placeholder="/static/app/SA-ctf_registration/images/uploads/asteron-easy-2026.png"/>
+                  </details>
+                </div>
 
                 <label for="ctfr-registration-opens">Registration opens</label>
                 <input id="ctfr-registration-opens" type="datetime-local" required="required" />

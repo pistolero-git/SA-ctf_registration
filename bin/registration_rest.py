@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import configparser
 import json
 import logging
 import os
+import re
 import ssl
 import sys
 import urllib.error
@@ -49,6 +52,11 @@ REGISTRATIONS_COLLECTION = "ctf_registrations"
 SCOREBOARD_APP = "SA-ctf_scoreboard"
 SCOREBOARD_ADMIN_APP = "SA-ctf_scoreboard_admin"
 CONTENT_ADMIN_ROLES = {"admin", "ctf_admin"}
+
+UPLOAD_DIR = BASE / "appserver" / "static" / "images" / "uploads"
+UPLOAD_URL_PREFIX = "/static/app/SA-ctf_registration/images/uploads"
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+UPLOAD_CTF_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 CONTENT_TARGETS = {
     "questions": (SCOREBOARD_ADMIN_APP, "ctf_questions", ("Number",)),
@@ -519,6 +527,68 @@ def _public_event(event, registration=None):
     }
 
 
+def _detect_image_type(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png", "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg", "image/jpeg"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    raise ValueError("Unsupported image type. Upload a PNG, JPEG, or WebP image.")
+
+
+def _decode_image_data(value):
+    raw = (value or "").strip()
+    if not raw:
+        raise ValueError("image_data is required")
+
+    if raw.startswith("data:"):
+        try:
+            header, raw = raw.split(",", 1)
+        except ValueError as exc:
+            raise ValueError("Invalid image data") from exc
+        if ";base64" not in header.lower():
+            raise ValueError("Uploaded image must use base64 encoding")
+
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid base64 image data") from exc
+
+    if not data:
+        raise ValueError("Uploaded image is empty")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("Image exceeds the 5 MB upload limit")
+    return data
+
+
+def _save_event_image(ctf_id, image_data):
+    ctf_id = (ctf_id or "").strip().lower()
+    if not UPLOAD_CTF_ID_RE.fullmatch(ctf_id):
+        raise ValueError("Enter a valid CTF ID before uploading an image")
+
+    data = _decode_image_data(image_data)
+    extension, mime_type = _detect_image_type(data)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    for old_extension in ("png", "jpg", "jpeg", "webp"):
+        old = UPLOAD_DIR / f"{ctf_id}.{old_extension}"
+        if old.exists():
+            old.unlink()
+
+    destination = UPLOAD_DIR / f"{ctf_id}.{extension}"
+    temp = UPLOAD_DIR / f".{ctf_id}.{extension}.tmp"
+    temp.write_bytes(data)
+    os.replace(temp, destination)
+
+    return {
+        "image_url": f"{UPLOAD_URL_PREFIX}/{destination.name}",
+        "filename": destination.name,
+        "content_type": mime_type,
+        "size": len(data),
+    }
+
+
 class RegistrationHandler(PersistentServerConnectionApplication):
     def __init__(self, command_line, command_arg):
         PersistentServerConnectionApplication.__init__(self)
@@ -558,6 +628,9 @@ class RegistrationHandler(PersistentServerConnectionApplication):
         if path == "admin/roster" and method == "GET":
             self._require_admin(request)
             return _json_response(self._admin_roster(request))
+        if path == "admin/upload-image" and method == "POST":
+            self._require_admin(request)
+            return _json_response(self._admin_upload_image(request))
 
         return _json_response({"message": "Not found"}, 404)
 
@@ -773,6 +846,21 @@ class RegistrationHandler(PersistentServerConnectionApplication):
                 f"{content['counts']['hints']} hints."
             )
         return response
+
+    def _admin_upload_image(self, request):
+        values = _pairs_to_dict(request.get("form"))
+        result = _save_event_image(
+            values.get("ctf_id", ""),
+            values.get("image_data", ""),
+        )
+        logger.info(
+            "CTF image uploaded by=%s ctf_id=%s file=%s size=%s",
+            request["session"]["user"],
+            values.get("ctf_id", ""),
+            result["filename"],
+            result["size"],
+        )
+        return {"message": "CTF image uploaded.", **result}
 
     def _admin_roster(self, request):
         general = _load_general()

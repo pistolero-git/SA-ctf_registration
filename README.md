@@ -270,23 +270,19 @@ This is shown when the participant opens the event details.
 
 ### 5. Image
 
-Place event images under:
+The admin page supports direct image upload. Enter the CTF ID first, then choose a PNG, JPEG, or WebP image up to 5 MB. Uploaded images are stored under:
 
 ```text
-appserver/static/images/
+appserver/static/images/uploads/
 ```
 
-Example:
+and the event `image_url` is populated automatically with a URL such as:
 
 ```text
-appserver/static/images/asteron-easy.png
+/static/app/SA-ctf_registration/images/uploads/asteron-easy-2026.png
 ```
 
-Use this value in the event:
-
-```text
-/static/app/SA-ctf_registration/images/asteron-easy.png
-```
+The image picker includes a preview and a **Use Default Image** button. The raw image URL/path field remains available under **Advanced: image URL/path** for manually managed images.
 
 If no custom image is supplied, use:
 

@@ -6,6 +6,9 @@ require([
 
     var base = "/en-US/splunkd/__raw/servicesNS/nobody/SA-ctf_registration/ctf_registration";
     var selectedId = null;
+    var defaultImage = "/static/app/SA-ctf_registration/images/default-ctf.svg";
+    var maxImageBytes = 5 * 1024 * 1024;
+    var allowedImageTypes = ["image/png", "image/jpeg", "image/webp"];
 
     function message(text, error) {
         $("#ctfr-admin-message").text(text || "").toggleClass("error", !!error).show();
@@ -59,6 +62,10 @@ require([
         $("#ctfr-enabled").prop("checked", true);
         $("#ctfr-allow-updates").prop("checked", true);
         $("#ctfr-participant-roles").val("ctf_competitor");
+        $("#ctfr-image-url").val(defaultImage);
+        $("#ctfr-image-file").val("");
+        $("#ctfr-image-preview").attr("src", defaultImage);
+        $("#ctfr-upload-status").text("");
         $("#ctfr-editor-title").text("Create CTF");
         clearContentFiles();
         $("#ctfr-roster-panel").hide();
@@ -71,7 +78,10 @@ require([
         $("#ctfr-name").val(event.name || "");
         $("#ctfr-short-description").val(event.short_description || "");
         $("#ctfr-description").val(event.description || "");
-        $("#ctfr-image-url").val(event.image_url || "");
+        $("#ctfr-image-url").val(event.image_url || defaultImage);
+        $("#ctfr-image-file").val("");
+        $("#ctfr-image-preview").attr("src", event.image_url || defaultImage);
+        $("#ctfr-upload-status").text("");
         $("#ctfr-registration-opens").val(toLocalInput(event.registration_opens));
         $("#ctfr-registration-closes").val(toLocalInput(event.registration_closes));
         $("#ctfr-event-starts").val(toLocalInput(event.event_starts));
@@ -134,6 +144,76 @@ require([
             message("Unable to load roster: " + (xhr.responseText || xhr.statusText), true);
         });
     }
+
+    function uploadImage(file) {
+        var ctfId = ($("#ctfr-ctf-id").val() || "").trim().toLowerCase();
+
+        if (!ctfId) {
+            message("Enter the CTF ID before uploading an image.", true);
+            $("#ctfr-image-file").val("");
+            return;
+        }
+        if (allowedImageTypes.indexOf(file.type) === -1) {
+            message("Image must be PNG, JPEG, or WebP.", true);
+            $("#ctfr-image-file").val("");
+            return;
+        }
+        if (file.size > maxImageBytes) {
+            message("Image exceeds the 5 MB upload limit.", true);
+            $("#ctfr-image-file").val("");
+            return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function(event) {
+            $("#ctfr-upload-status").text("Uploading…");
+            $.ajax({
+                url: base + "/admin/upload-image",
+                method: "POST",
+                dataType: "json",
+                data: {
+                    ctf_id: ctfId,
+                    image_data: event.target.result
+                },
+                timeout: 30000
+            }).done(function(resp) {
+                $("#ctfr-image-url").val(resp.image_url);
+                $("#ctfr-image-preview").attr("src", resp.image_url + "?v=" + Date.now());
+                $("#ctfr-upload-status").text(
+                    "Uploaded " + resp.filename + " (" + Math.round(resp.size / 1024) + " KB)"
+                );
+                message("Image uploaded. Save the CTF to associate it with the event.", false);
+            }).fail(function(xhr) {
+                var m = xhr.responseJSON && xhr.responseJSON.message ?
+                    xhr.responseJSON.message : (xhr.responseText || xhr.statusText);
+                $("#ctfr-upload-status").text("");
+                message("Image upload failed: " + m, true);
+            });
+        };
+        reader.onerror = function() {
+            $("#ctfr-upload-status").text("");
+            message("Unable to read the selected image.", true);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    $("#ctfr-image-file").on("change", function() {
+        var file = this.files && this.files[0];
+        if (file) {
+            uploadImage(file);
+        }
+    });
+
+    $("#ctfr-use-default-image").on("click", function() {
+        $("#ctfr-image-file").val("");
+        $("#ctfr-image-url").val(defaultImage);
+        $("#ctfr-image-preview").attr("src", defaultImage);
+        $("#ctfr-upload-status").text("Using the default CTF image.");
+    });
+
+    $("#ctfr-image-url").on("input change", function() {
+        $("#ctfr-image-preview").attr("src", $(this).val() || defaultImage);
+    });
 
     $("#ctfr-events-table").on("click", "button", function() {
         populateForm($(this).closest("tr").data("event"));
